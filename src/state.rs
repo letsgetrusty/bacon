@@ -3,22 +3,12 @@ use {
     anyhow::Result,
     std::io::Write,
     termimad::{
-        Area,
-        CompoundStyle,
-        MadSkin,
         crossterm::{
-            cursor,
-            execute,
-            style::{
-                Attribute,
-                Color::*,
-                Print,
-            },
+            cursor, execute,
+            style::{Attribute, Color::*, Print},
         },
-        minimad::{
-            Alignment,
-            Composite,
-        },
+        minimad::{Alignment, Composite},
+        Area, CompoundStyle, MadSkin,
     },
 };
 
@@ -146,6 +136,9 @@ impl<'s> AppState<'s> {
     }
     pub fn toggle_raw_output(&mut self) {
         self.raw_output ^= true;
+    }
+    pub fn toggle_search(&mut self) {
+        todo!()
     }
     pub fn set_result(
         &mut self,

@@ -192,6 +192,9 @@ pub fn run(
                         task_executor.die();
                         task_executor = state.start_computation(&mut executor)?;
                     }
+                    Internal::Search => {
+                        state.toggle_search();
+                    }
                     Internal::ToggleRawOutput => {
                         state.toggle_raw_output();
                     }

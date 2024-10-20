@@ -1,7 +1,4 @@
-use {
-    crate::ScrollCommand,
-    std::fmt,
-};
+use {crate::ScrollCommand, std::fmt};
 
 /// one of the hardcoded actions that can be mapped
 /// to a key or ran after a successful job
@@ -13,6 +10,7 @@ pub enum Internal {
     Refresh, // clear and rerun
     ReRun,
     Scroll(ScrollCommand),
+    Search,
     ToggleBacktrace(&'static str),
     ToggleRawOutput,
     ToggleSummary,
@@ -34,6 +32,7 @@ impl fmt::Display for Internal {
             Self::Refresh => write!(f, "clear then run current job again"),
             Self::ReRun => write!(f, "run current job again"),
             Self::Scroll(scroll_command) => scroll_command.fmt(f),
+            Self::Search => write!(f, "search"),
             Self::ToggleBacktrace(level) => write!(f, "toggle backtrace ({level})"),
             Self::ToggleRawOutput => write!(f, "toggle raw output"),
             Self::ToggleSummary => write!(f, "toggle summary"),

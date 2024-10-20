@@ -2,10 +2,7 @@ use {
     crate::*,
     crokey::*,
     serde::Deserialize,
-    std::collections::{
-        HashMap,
-        hash_map,
-    },
+    std::collections::{hash_map, HashMap},
 };
 
 /// A mapping from key combinations to actions.
@@ -22,6 +19,7 @@ impl Default for KeyBindings {
         let mut bindings = Self {
             map: HashMap::default(),
         };
+        bindings.set(key!('/'), Internal::Search);
         bindings.set(key!('?'), Internal::Help);
         bindings.set(key!(h), Internal::Help);
         bindings.set(key!(ctrl - c), Internal::Quit);

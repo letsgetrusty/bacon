@@ -7,6 +7,7 @@ pub struct HelpLine {
     not_wrap: Option<String>,
     toggle_backtrace: Option<String>,
     help: Option<String>,
+    search: Option<String>,
     close_help: Option<String>,
     pause: Option<String>,
     unpause: Option<String>,
@@ -36,6 +37,9 @@ impl HelpLine {
         let help = kb
             .shortest_internal_key(Internal::Help)
             .map(|k| format!("*{k}* for help"));
+        let search = kb
+            .shortest_internal_key(Internal::Search)
+            .map(|k| format!("*{k}* to toggle search"));
         let close_help = kb
             .shortest_internal_key(Internal::Back)
             .or_else(|| kb.shortest_internal_key(Internal::Help))
@@ -55,6 +59,7 @@ impl HelpLine {
             not_wrap,
             toggle_backtrace,
             help,
+            search,
             close_help,
             pause,
             unpause,
@@ -101,6 +106,9 @@ impl HelpLine {
                 }
             }
             if let Some(s) = &self.help {
+                parts.push(s);
+            }
+            if let Some(s) = &self.search {
                 parts.push(s);
             }
         }
