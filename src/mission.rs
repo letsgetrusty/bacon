@@ -2,16 +2,9 @@ use {
     crate::*,
     anyhow::Result,
     lazy_regex::regex_replace_all,
-    notify::{
-        RecommendedWatcher,
-        RecursiveMode,
-        Watcher,
-    },
+    notify::{RecommendedWatcher, RecursiveMode, Watcher},
     rustc_hash::FxHashSet,
-    std::{
-        path::PathBuf,
-        process::Command,
-    },
+    std::{path::PathBuf, process::Command},
 };
 
 static DEFAULT_WATCHES: &[&str] = &["src", "tests", "benches", "examples", "build.rs"];
