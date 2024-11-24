@@ -2,30 +2,16 @@ use {
     crate::*,
     anyhow::Result,
     crokey::*,
-    crossbeam::channel::{
-        bounded,
-        select,
-    },
-    notify::event::{
-        AccessKind,
-        AccessMode,
-        DataChange,
-        EventKind,
-        ModifyKind,
-    },
-    termimad::{
-        EventSource,
-        crossterm::event::Event,
-    },
+    crossbeam::channel::{bounded, select},
+    crossterm::event::KeyCode,
+    notify::event::{AccessKind, AccessMode, DataChange, EventKind, ModifyKind},
+    termimad::{crossterm::event::Event, EventSource},
 };
 
 #[cfg(windows)]
 use {
     crokey::key,
-    termimad::crossterm::event::{
-        MouseEvent,
-        MouseEventKind,
-    },
+    termimad::crossterm::event::{MouseEvent, MouseEventKind},
 };
 
 /// Run the mission and return the reference to the next job to run, if any
@@ -144,7 +130,25 @@ pub fn run(
                     Event::Key(key_event) => {
                         let key_combination = KeyCombination::from(key_event);
                         debug!("key combination pressed: {}", key_combination);
-                        action = keybindings.get(key_combination);
+                        if state.is_searching() {
+                            match key_event.code {
+                                KeyCode::Esc => {
+                                    state.exit_search();
+                                }
+                                KeyCode::Enter => {
+                                    state.next_search_match();
+                                }
+                                KeyCode::Backspace => {
+                                    state.backspace_search();
+                                }
+                                KeyCode::Char(c) => {
+                                    state.update_search(c);
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            action = keybindings.get(key_combination);
+                        }
                     }
                     #[cfg(windows)]
                     Event::Mouse(MouseEvent { kind: MouseEventKind::ScrollDown, .. }) => {

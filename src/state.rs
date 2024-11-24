@@ -49,6 +49,8 @@ pub struct AppState<'s> {
     help_line: Option<HelpLine>,
     /// the help page displayed over the rest, if any
     help_page: Option<HelpPage>,
+    /// the search state, if any
+    search: Option<SearchState>,
     /// display the raw output instead of the report
     raw_output: bool,
     /// whether auto-refresh is enabled
@@ -57,6 +59,13 @@ pub struct AppState<'s> {
     pub changes_since_last_job_start: usize,
     /// whether to display the count of changes
     pub show_changes_count: bool,
+}
+
+#[derive(Default)]
+pub struct SearchState {
+    pub query: String,
+    pub current_match: Option<usize>,
+    pub matches: Vec<usize>,
 }
 
 impl<'s> AppState<'s> {
@@ -90,6 +99,7 @@ impl<'s> AppState<'s> {
             top_item_idx: 0,
             help_line,
             help_page: None,
+            search: None,
             mission,
             raw_output: false,
             auto_refresh: AutoRefresh::Enabled,
@@ -138,7 +148,60 @@ impl<'s> AppState<'s> {
         self.raw_output ^= true;
     }
     pub fn toggle_search(&mut self) {
-        todo!()
+        if self.search.is_none() {
+            self.search = Some(SearchState::default());
+        }
+    }
+    pub fn exit_search(&mut self) {
+        self.search = None;
+    }
+    pub fn is_searching(&self) -> bool {
+        self.search.is_some()
+    }
+    pub fn update_search(
+        &mut self,
+        c: char,
+    ) {
+        if let Some(search) = &mut self.search {
+            search.query.push(c);
+            self.perform_search();
+        }
+    }
+    pub fn backspace_search(&mut self) {
+        if let Some(search) = &mut self.search {
+            search.query.pop();
+            self.perform_search();
+        }
+    }
+    pub fn next_search_match(&mut self) {
+        if let Some(search) = &mut self.search {
+            if let Some(current) = search.current_match {
+                search.current_match = Some((current + 1) % search.matches.len());
+            } else if !search.matches.is_empty() {
+                search.current_match = Some(0);
+            }
+        }
+    }
+    fn perform_search(&mut self) {
+        if let Some(search) = &mut self.search {
+            search.matches.clear();
+            search.current_match = None;
+
+            if let Some(output) = &self.output {
+                for (idx, line) in output.lines.iter().enumerate() {
+                    let combined_raw = line
+                        .content
+                        .strings
+                        .iter()
+                        .map(|tstring| tstring.raw.as_str())
+                        .collect::<String>();
+
+                    if combined_raw.contains(&search.query) {
+                        search.matches.push(idx);
+                    }
+                }
+            }
+        }
     }
     pub fn set_result(
         &mut self,
@@ -379,6 +442,27 @@ impl<'s> AppState<'s> {
         w: &mut W,
         y: u16,
     ) -> Result<()> {
+        // draw search ui if search is active
+        if let Some(search) = &self.search {
+            let markdown = format!(
+                "Search: {} ({} matches)",
+                search.query,
+                search.matches.len()
+            );
+
+            if self.height > 1 {
+                goto(w, y)?;
+                self.status_skin.write_composite_fill(
+                    w,
+                    Composite::from_inline(&markdown),
+                    self.width.into(),
+                    Alignment::Left,
+                )?;
+            }
+
+            return Ok(());
+        }
+
         if let Some(help_line) = &self.help_line {
             let markdown = help_line.markdown(self);
             if self.height > 1 {
@@ -502,6 +586,116 @@ impl<'s> AppState<'s> {
             }
         }
     }
+    pub fn draw_report(
+        &mut self,
+        report: &Report,
+        area: Area,
+        top: u16,
+        top_item_idx: &mut Option<usize>,
+        scrollbar: Option<(u16, u16)>,
+        w: &mut W,
+    ) -> Result<()> {
+        let width = self.width as usize;
+        match (self.wrap, self.wrapped_report.as_ref()) {
+            (true, Some(wrapped_report)) => {
+                // wrapped report
+                let mut sub_lines = wrapped_report
+                    .sub_lines
+                    .iter()
+                    .filter(|sub_line| {
+                        !(self.summary && sub_line.src_line_type(report) == LineType::Normal)
+                    })
+                    .skip(self.scroll);
+                for row_idx in 0..area.height {
+                    let y = row_idx + top;
+                    goto(w, y)?;
+                    if let Some(sub_line) = sub_lines.next() {
+                        top_item_idx.get_or_insert_with(|| sub_line.src_line(report).item_idx);
+                        sub_line.draw_line_type(w, report)?;
+                        write!(w, " ")?;
+                        sub_line.draw(w, &report.lines)?;
+                    }
+                    clear_line(w)?;
+                    if is_thumb(y.into(), scrollbar) {
+                        execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
+                    }
+                }
+            }
+            _ => {
+                // unwrapped report
+                let mut lines = report
+                    .lines
+                    .iter()
+                    .filter(|line| !(self.summary && line.line_type == LineType::Normal))
+                    .skip(self.scroll);
+                for row_idx in 0..area.height {
+                    let y = row_idx + top;
+                    goto(w, y)?;
+                    if let Some(Line {
+                        item_idx,
+                        line_type,
+                        content,
+                    }) = lines.next()
+                    {
+                        top_item_idx.get_or_insert(*item_idx);
+                        line_type.draw(w, *item_idx)?;
+                        write!(w, " ")?;
+                        if width > line_type.cols() + 1 {
+                            content.draw_in(w, width - 1 - line_type.cols())?;
+                        }
+                    }
+                    clear_line(w)?;
+                    if is_thumb(y.into(), scrollbar) {
+                        execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
+                    }
+                }
+            }
+        }
+        self.top_item_idx = top_item_idx.unwrap_or(0);
+
+        Ok(())
+    }
+    fn draw_cmd_output(
+        &mut self,
+        output: &CommandOutput,
+        area: Area,
+        top: u16,
+        scrollbar: Option<(u16, u16)>,
+        w: &mut W,
+    ) -> Result<()> {
+        let width = self.width as usize;
+        match (self.wrap, self.wrapped_output.as_ref()) {
+            (true, Some(wrapped_output)) => {
+                let mut sub_lines = wrapped_output.sub_lines.iter().skip(self.scroll);
+                for row_idx in 0..area.height {
+                    let y = row_idx + top;
+                    goto(w, y)?;
+                    if let Some(sub_line) = sub_lines.next() {
+                        sub_line.draw(w, &output.lines)?;
+                    }
+                    clear_line(w)?;
+                    if is_thumb(y.into(), scrollbar) {
+                        execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
+                    }
+                }
+            }
+            _ => {
+                let lines = &output.lines;
+                for row_idx in 0..area.height {
+                    let y = row_idx + top;
+                    goto(w, y)?;
+                    if let Some(line) = lines.get(row_idx as usize + self.scroll) {
+                        line.content.draw_in(w, width)?;
+                    }
+                    clear_line(w)?;
+                    if is_thumb(y.into(), scrollbar) {
+                        execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     /// draw the report or the lines of the current computation, between
     /// y and self.page_height()
     pub fn draw_content(
@@ -526,95 +720,13 @@ impl<'s> AppState<'s> {
             goto(w, y)?;
             clear_line(w)?;
         }
-        let width = self.width as usize;
+
         if let Some(report) = self.report_to_draw() {
-            match (self.wrap, self.wrapped_report.as_ref()) {
-                (true, Some(wrapped_report)) => {
-                    // wrapped report
-                    let mut sub_lines = wrapped_report
-                        .sub_lines
-                        .iter()
-                        .filter(|sub_line| {
-                            !(self.summary && sub_line.src_line_type(report) == LineType::Normal)
-                        })
-                        .skip(self.scroll);
-                    for row_idx in 0..area.height {
-                        let y = row_idx + top;
-                        goto(w, y)?;
-                        if let Some(sub_line) = sub_lines.next() {
-                            top_item_idx.get_or_insert_with(|| sub_line.src_line(report).item_idx);
-                            sub_line.draw_line_type(w, report)?;
-                            write!(w, " ")?;
-                            sub_line.draw(w, &report.lines)?;
-                        }
-                        clear_line(w)?;
-                        if is_thumb(y.into(), scrollbar) {
-                            execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
-                        }
-                    }
-                }
-                _ => {
-                    // unwrapped report
-                    let mut lines = report
-                        .lines
-                        .iter()
-                        .filter(|line| !(self.summary && line.line_type == LineType::Normal))
-                        .skip(self.scroll);
-                    for row_idx in 0..area.height {
-                        let y = row_idx + top;
-                        goto(w, y)?;
-                        if let Some(Line {
-                            item_idx,
-                            line_type,
-                            content,
-                        }) = lines.next()
-                        {
-                            top_item_idx.get_or_insert(*item_idx);
-                            line_type.draw(w, *item_idx)?;
-                            write!(w, " ")?;
-                            if width > line_type.cols() + 1 {
-                                content.draw_in(w, width - 1 - line_type.cols())?;
-                            }
-                        }
-                        clear_line(w)?;
-                        if is_thumb(y.into(), scrollbar) {
-                            execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
-                        }
-                    }
-                }
-            }
-            self.top_item_idx = top_item_idx.unwrap_or(0);
+            let report = report.clone(); // TODO: remove clone. fix lifetime issues.
+            self.draw_report(&report, area, top, &mut top_item_idx, scrollbar, w)?;
         } else if let Some(output) = self.cmd_result.output().or(self.output.as_ref()) {
-            match (self.wrap, self.wrapped_output.as_ref()) {
-                (true, Some(wrapped_output)) => {
-                    let mut sub_lines = wrapped_output.sub_lines.iter().skip(self.scroll);
-                    for row_idx in 0..area.height {
-                        let y = row_idx + top;
-                        goto(w, y)?;
-                        if let Some(sub_line) = sub_lines.next() {
-                            sub_line.draw(w, &output.lines)?;
-                        }
-                        clear_line(w)?;
-                        if is_thumb(y.into(), scrollbar) {
-                            execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
-                        }
-                    }
-                }
-                _ => {
-                    let lines = &output.lines;
-                    for row_idx in 0..area.height {
-                        let y = row_idx + top;
-                        goto(w, y)?;
-                        if let Some(line) = lines.get(row_idx as usize + self.scroll) {
-                            line.content.draw_in(w, width)?;
-                        }
-                        clear_line(w)?;
-                        if is_thumb(y.into(), scrollbar) {
-                            execute!(w, cursor::MoveTo(area.width, y), Print('▐'.to_string()))?;
-                        }
-                    }
-                }
-            }
+            let output = output.clone(); // TODO: remove clone. fix lifetime issues.
+            self.draw_cmd_output(&output, area, top, scrollbar, w)?;
         }
         Ok(())
     }
