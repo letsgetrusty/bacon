@@ -672,6 +672,9 @@ impl<'s> AppState<'s> {
         w: &mut W,
     ) -> Result<()> {
         let width = self.width as usize;
+
+        let new_lines = self.highlight_search_in_lines(output);
+
         match (self.wrap, self.wrapped_output.as_ref()) {
             (true, Some(wrapped_output)) => {
                 let mut sub_lines = wrapped_output.sub_lines.iter().skip(self.scroll);
@@ -679,18 +682,7 @@ impl<'s> AppState<'s> {
                     let y = row_idx + top;
                     goto(w, y)?;
                     if let Some(sub_line) = sub_lines.next() {
-                        //     if let Some(search) = &self.search {
-                        //         if let Some(current_search_idx) = search.current_match {
-                        //             if row_idx == current_search_idx as u16 {
-                        //                 // color search match line
-                        //                 let mut new_string = sub_line.clone();
-                        //                 new_string.strings.push(TString::badge("FOUND", 000, 255));
-                        //                 new_string.draw_in(w, width)?;
-                        //             }
-                        //         }
-                        //     }
-
-                        sub_line.draw(w, &output.lines)?;
+                        sub_line.draw(w, &new_lines)?;
                     }
                     clear_line(w)?;
                     if is_thumb(y.into(), scrollbar) {
@@ -699,38 +691,11 @@ impl<'s> AppState<'s> {
                 }
             }
             _ => {
-                let lines = &output.lines;
                 for row_idx in 0..area.height {
                     let y = row_idx + top;
                     goto(w, y)?;
-                    if let Some(line) = lines.get(row_idx as usize + self.scroll) {
-                        if let Some(search) = &self.search {
-                            if line.content.has(search.query.as_str()) {
-                                let new_strings = line.content.strings.iter().map(|tstring| {
-                                    if tstring.raw.contains(&search.query) {
-                                        let mut tstring = tstring.clone();
-                                        tstring.raw = tstring.raw.replace(
-                                            &search.query,
-                                            &format!(
-                                                "\u{1b}[38;5;235m\u{1b}[48;5;208m{}\u{1b}[0m",
-                                                &search.query
-                                            ),
-                                        );
-                                        tstring
-                                    } else {
-                                        tstring.clone()
-                                    }
-                                });
-
-                                let mut new_content = line.content.clone();
-                                new_content.strings = new_strings.collect();
-                                new_content.draw_in(w, width)?;
-                            } else {
-                                line.content.draw_in(w, width)?;
-                            }
-                        } else {
-                            line.content.draw_in(w, width)?;
-                        }
+                    if let Some(line) = new_lines.get(row_idx as usize + self.scroll) {
+                        line.content.draw_in(w, width)?;
                     }
                     clear_line(w)?;
                     if is_thumb(y.into(), scrollbar) {
@@ -740,6 +705,51 @@ impl<'s> AppState<'s> {
             }
         }
         Ok(())
+    }
+
+    fn highlight_search_in_lines(
+        &mut self,
+        output: &CommandOutput,
+    ) -> Vec<CommandOutputLine> {
+        if self.search.is_none() {
+            return output.lines.clone();
+        }
+
+        let new_lines: Vec<CommandOutputLine> = output
+            .lines
+            .iter()
+            .map(|line: &CommandOutputLine| {
+                if let Some(search) = &self.search {
+                    if line.content.has(search.query.as_str()) {
+                        let new_strings = line.content.strings.iter().map(|tstring| {
+                            if tstring.raw.contains(&search.query) {
+                                let mut tstring = tstring.clone();
+                                tstring.raw = tstring.raw.replace(
+                                    &search.query,
+                                    &format!(
+                                        "\u{1b}[38;5;235m\u{1b}[48;5;208m{}\u{1b}[0m",
+                                        &search.query
+                                    ),
+                                );
+                                tstring
+                            } else {
+                                tstring.clone()
+                            }
+                        });
+
+                        let mut new_content = line.content.clone();
+                        new_content.strings = new_strings.collect();
+                        let new_line = CommandOutputLine {
+                            content: new_content,
+                            origin: line.origin,
+                        };
+                        return new_line;
+                    }
+                }
+                line.clone()
+            })
+            .collect();
+        new_lines
     }
     /// draw the report or the lines of the current computation, between
     /// y and self.page_height()
