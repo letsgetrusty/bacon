@@ -1,24 +1,10 @@
 use {
     crate::*,
-    anyhow::{
-        Context,
-        Result,
-    },
-    crossbeam::channel::{
-        Receiver,
-        Sender,
-    },
+    anyhow::{Context, Result},
+    crossbeam::channel::{Receiver, Sender},
     std::{
-        io::{
-            self,
-            BufRead,
-            BufReader,
-        },
-        process::{
-            Child,
-            Command,
-            Stdio,
-        },
+        io::{self, BufRead, BufReader},
+        process::{Child, Command, Stdio},
         thread,
     },
 };

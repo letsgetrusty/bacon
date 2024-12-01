@@ -1,7 +1,7 @@
 use {
     crate::*,
     anyhow::Result,
-    std::io::Write,
+    std::{io::Write, process::Output},
     termimad::{
         crossterm::{
             cursor, execute,
@@ -677,6 +677,10 @@ impl<'s> AppState<'s> {
 
         match (self.wrap, self.wrapped_output.as_ref()) {
             (true, Some(wrapped_output)) => {
+                let mut output = output.clone();
+                output.lines = new_lines.clone();
+                let wrapped_output = WrappedCommandOutput::new(&output, width as u16);
+
                 let mut sub_lines = wrapped_output.sub_lines.iter().skip(self.scroll);
                 for row_idx in 0..area.height {
                     let y = row_idx + top;
@@ -711,7 +715,11 @@ impl<'s> AppState<'s> {
         &mut self,
         output: &CommandOutput,
     ) -> Vec<CommandOutputLine> {
-        if self.search.is_none() {
+        if let Some(search) = &self.search {
+            if search.query.trim().is_empty() {
+                return output.lines.clone();
+            }
+        } else {
             return output.lines.clone();
         }
 
@@ -719,34 +727,15 @@ impl<'s> AppState<'s> {
             .lines
             .iter()
             .map(|line: &CommandOutputLine| {
+                let mut new_line = line.clone();
                 if let Some(search) = &self.search {
                     if line.content.has(search.query.as_str()) {
-                        let new_strings = line.content.strings.iter().map(|tstring| {
-                            if tstring.raw.contains(&search.query) {
-                                let mut tstring = tstring.clone();
-                                tstring.raw = tstring.raw.replace(
-                                    &search.query,
-                                    &format!(
-                                        "\u{1b}[38;5;235m\u{1b}[48;5;208m{}\u{1b}[0m",
-                                        &search.query
-                                    ),
-                                );
-                                tstring
-                            } else {
-                                tstring.clone()
-                            }
-                        });
-
-                        let mut new_content = line.content.clone();
-                        new_content.strings = new_strings.collect();
-                        let new_line = CommandOutputLine {
-                            content: new_content,
-                            origin: line.origin,
-                        };
-                        return new_line;
+                        new_line
+                            .content
+                            .add_badge(TString::badge("MATCH", 235, 208));
                     }
                 }
-                line.clone()
+                new_line
             })
             .collect();
         new_lines
