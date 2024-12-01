@@ -723,6 +723,8 @@ impl<'s> AppState<'s> {
             return output.lines.clone();
         }
 
+        let mut search_index = 0;
+
         let new_lines: Vec<CommandOutputLine> = output
             .lines
             .iter()
@@ -730,9 +732,20 @@ impl<'s> AppState<'s> {
                 let mut new_line = line.clone();
                 if let Some(search) = &self.search {
                     if line.content.has(search.query.as_str()) {
-                        new_line
-                            .content
-                            .add_badge(TString::badge("MATCH", 235, 208));
+                        if let Some(current_match) = search.current_match {
+                            if current_match == search_index {
+                                new_line.content.add_badge(TString::badge("MATCH", 235, 10));
+                            } else {
+                                new_line
+                                    .content
+                                    .add_badge(TString::badge("MATCH", 235, 208));
+                            }
+                        } else {
+                            new_line
+                                .content
+                                .add_badge(TString::badge("MATCH", 235, 208));
+                        }
+                        search_index += 1;
                     }
                 }
                 new_line
