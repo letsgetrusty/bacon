@@ -144,7 +144,9 @@ pub fn run(
                                 KeyCode::Char(c) => {
                                     state.update_search(c);
                                 }
-                                _ => {}
+                                _ => {
+                                    action = keybindings.get(key_combination);
+                                }
                             }
                         } else {
                             action = keybindings.get(key_combination);
