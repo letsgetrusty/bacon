@@ -180,6 +180,13 @@ impl<'s> AppState<'s> {
             } else if !search.matches.is_empty() {
                 search.current_match = Some(0);
             }
+
+            // Scroll to the next match
+            if let Some(current_match) = search.current_match {
+                let match_idx = search.matches[current_match];
+                self.scroll = match_idx;
+                self.fix_scroll();
+            }
         }
     }
     fn perform_search(&mut self) {
