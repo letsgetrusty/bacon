@@ -1,14 +1,8 @@
 use {
     crate::*,
     anyhow::*,
-    serde::{
-        Deserialize,
-        Serialize,
-    },
-    std::{
-        fmt::Write as _,
-        io::Write,
-    },
+    serde::{Deserialize, Serialize},
+    std::{fmt::Write as _, io::Write},
     termimad::StrFit,
 };
 
@@ -118,6 +112,13 @@ impl TString {
             write!(w, "{}{}{}", &self.csi, &self.raw, CSI_RESET,)?;
         }
         Ok(())
+    }
+    pub fn get_drawable_string(&self) -> String {
+        if self.csi.is_empty() {
+            self.raw.clone()
+        } else {
+            format!("{}{}{}", &self.csi, &self.raw, CSI_RESET)
+        }
     }
     /// draw the string but without taking more than cols_max cols.
     /// Return the number of cols written

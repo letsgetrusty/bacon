@@ -730,31 +730,61 @@ impl<'s> AppState<'s> {
             return output.lines.clone();
         }
 
-        let mut search_index = 0;
+        let mut line_number = 0;
 
         let new_lines: Vec<CommandOutputLine> = output
             .lines
             .iter()
             .map(|line: &CommandOutputLine| {
                 let mut new_line = line.clone();
+
+                let combined_raw = new_line
+                    .content
+                    .strings
+                    .iter()
+                    .map(|tstring| tstring.raw.as_str())
+                    .collect::<String>();
+
+                new_line.content.strings = vec![TString {
+                    csi: "".to_string(),
+                    raw: combined_raw.clone(),
+                }];
+
                 if let Some(search) = &self.search {
-                    if line.content.has(search.query.as_str()) {
+                    if search.matches.contains(&(line_number as usize)) {
+                        // Concatenate all raw strings into one
+                        // let combined_raw = new_line
+                        //     .content
+                        //     .strings
+                        //     .iter()
+                        //     .map(|tstring| tstring.get_drawable_string())
+                        //     .collect::<String>();
+
                         if let Some(current_match) = search.current_match {
-                            if current_match == search_index {
-                                new_line.content.add_badge(TString::badge("MATCH", 235, 10));
-                            } else {
-                                new_line
-                                    .content
-                                    .add_badge(TString::badge("MATCH", 235, 208));
+                            if current_match == line_number {
+                                new_line.content.strings = vec![TString {
+                                    csi: "".to_string(),
+                                    raw: combined_raw.replace(
+                                        &search.query,
+                                        &format!("\u{1b}[32m{}\u{1b}[0m", &search.query),
+                                    ),
+                                }];
+                                line_number += 1;
+                                return new_line;
                             }
-                        } else {
-                            new_line
-                                .content
-                                .add_badge(TString::badge("MATCH", 235, 208));
                         }
-                        search_index += 1;
+
+                        // Highlight the search query
+                        new_line.content.strings = vec![TString {
+                            csi: "".to_string(),
+                            raw: combined_raw.replace(
+                                &search.query,
+                                &format!("\u{1b}[31m{}\u{1b}[0m", &search.query),
+                            ),
+                        }];
                     }
                 }
+                line_number += 1;
                 new_line
             })
             .collect();
