@@ -469,11 +469,17 @@ impl<'s> AppState<'s> {
     ) -> Result<()> {
         // draw search ui if search is active
         if let Some(search) = &self.search {
-            let markdown = format!(
-                "Search: {} ({} matches)",
-                search.query,
-                search.matches.len()
-            );
+            let mut markdown = format!("Search: {}", search.query);
+
+            if let Some(match_index) = search.current_match {
+                markdown.push_str(&format!(
+                    " (match {} of {})",
+                    match_index + 1,
+                    search.matches.len()
+                ));
+            } else {
+                markdown.push_str(&format!(" ({} matches)", search.matches.len()));
+            }
 
             if self.height > 1 {
                 goto(w, y)?;
