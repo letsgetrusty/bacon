@@ -61,11 +61,17 @@ pub struct AppState<'s> {
     pub show_changes_count: bool,
 }
 
+type LineNumber = usize;
+type MatchesIndex = usize;
+type MatchNumber = usize;
+
+type Match = (LineNumber, MatchNumber);
+
 #[derive(Default)]
 pub struct SearchState {
     pub query: String,
-    pub current_match: Option<usize>,
-    pub matches: Vec<usize>,
+    pub current_match: Option<MatchesIndex>,
+    pub matches: Vec<Match>,
 }
 
 impl<'s> AppState<'s> {
@@ -184,7 +190,7 @@ impl<'s> AppState<'s> {
             // Scroll to the next match
             if let Some(current_match) = search.current_match {
                 let match_idx = search.matches[current_match];
-                self.scroll = match_idx;
+                self.scroll = match_idx.0;
                 self.fix_scroll();
             }
         }
@@ -211,8 +217,12 @@ impl<'s> AppState<'s> {
 
                     println!("combined_raw: {:?}", combined_raw);
 
-                    if combined_raw.contains(&search.query) {
-                        search.matches.push(idx);
+                    let mut match_count = 0;
+                    let mut remaining = combined_raw.as_str();
+                    while let Some(pos) = remaining.find(&search.query) {
+                        match_count += 1;
+                        remaining = &remaining[pos + search.query.len()..];
+                        search.matches.push((idx, match_count));
                     }
                 }
             }
@@ -730,7 +740,7 @@ impl<'s> AppState<'s> {
             return output.lines.clone();
         }
 
-        let mut line_number = 0;
+        let mut line_number_count = 0;
 
         let new_lines: Vec<CommandOutputLine> = output
             .lines
@@ -750,31 +760,58 @@ impl<'s> AppState<'s> {
                     raw: combined_raw.clone(),
                 }];
 
+                // Is search active?
                 if let Some(search) = &self.search {
-                    if search.matches.contains(&(line_number as usize)) {
-                        // Concatenate all raw strings into one
-                        // let combined_raw = new_line
-                        //     .content
-                        //     .strings
-                        //     .iter()
-                        //     .map(|tstring| tstring.get_drawable_string())
-                        //     .collect::<String>();
+                    let found_match = search
+                        .matches
+                        .iter()
+                        .find(|(idx, _)| *idx == line_number_count);
 
-                        if let Some(current_match) = search.current_match {
-                            if current_match == line_number {
-                                new_line.content.strings = vec![TString {
-                                    csi: "".to_string(),
-                                    raw: combined_raw.replace(
-                                        &search.query,
-                                        &format!("\u{1b}[32m{}\u{1b}[0m", &search.query),
-                                    ),
-                                }];
-                                line_number += 1;
-                                return new_line;
+                    // Does the current line contain a match?
+                    if let Some(&(line_number, _)) = found_match {
+                        if let Some(index) = search.current_match {
+                            let x_match = search.matches[index];
+
+                            // Is the current match in the current line?
+                            if x_match.0 == line_number {
+                                let mut highlighted_raw = String::new();
+                                let mut remaining = combined_raw.as_str();
+                                let mut match_count = 0;
+
+                                // Find all matches in the line
+                                while let Some(pos) = remaining.find(&search.query) {
+                                    match_count += 1;
+
+                                    // If we are at the current match, highlight it
+                                    if match_count == x_match.1 {
+                                        highlighted_raw.push_str(&remaining[..pos]);
+                                        highlighted_raw.push_str("\u{1b}[32m"); // Green color for the current match
+                                        highlighted_raw.push_str(&search.query);
+                                        highlighted_raw.push_str("\u{1b}[0m");
+                                        remaining = &remaining[pos + search.query.len()..];
+                                    } else {
+                                        highlighted_raw.push_str(&remaining[..pos]);
+                                        highlighted_raw.push_str("\u{1b}[31m"); // Red color for other matches
+                                        highlighted_raw.push_str(&search.query);
+                                        highlighted_raw.push_str("\u{1b}[0m");
+                                        remaining = &remaining[pos + search.query.len()..];
+                                    }
+                                }
+
+                                highlighted_raw.push_str(remaining);
+
+                                if !highlighted_raw.is_empty() {
+                                    new_line.content.strings = vec![TString {
+                                        csi: "".to_string(),
+                                        raw: highlighted_raw,
+                                    }];
+                                    line_number_count += 1;
+                                    return new_line;
+                                }
                             }
-                        }
+                        };
 
-                        // Highlight the search query
+                        // Highlight the search query red
                         new_line.content.strings = vec![TString {
                             csi: "".to_string(),
                             raw: combined_raw.replace(
@@ -784,7 +821,7 @@ impl<'s> AppState<'s> {
                         }];
                     }
                 }
-                line_number += 1;
+                line_number_count += 1;
                 new_line
             })
             .collect();
